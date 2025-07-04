@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fruit Catcher Game 🍎</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: url('images/background.jpg') no-repeat center center fixed;
+      background-size: cover;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+    }
+    #restartBtn {
+      display: none;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      padding: 15px 30px;
+      background-color: lightgreen;
+      border: none;
+      border-radius: 10px;
+      font-size: 24px;
+      font-family: Arial, sans-serif;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<button id="restartBtn">Restart Game</button>
+
+<!-- Sound effects -->
+<audio id="catchSound" src="sounds/catch.mp3"></audio>
+<audio id="gameOverSound" src="sounds/game_over.mp3"></audio>
+<audio id="backgroundMusic" src="sounds/music.mp3" loop></audio>
+<audio id="slowSound" src="sounds/slow.mp3"></audio>
+<audio id="bonusSound" src="sounds/bonus.mp3"></audio>
+<audio id="blastSound" src="sounds/blast.mp3"></audio>
+<audio id="heartSound" src="sounds/heart.mp3"></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Images
+const basketImg = new Image();
+basketImg.src = 'images/basket.png';
+const fruitImgs = ['images/apple.png', 'images/banana.png', 'images/grape.png'].map(src => {
+  let img = new Image();
+  img.src = src;
+  return img;
+});
+const slowImg = new Image();
+slowImg.src = 'images/slow_fruits.png';
+const heartImg = new Image();
+heartImg.src = 'images/heart.png';
+const blastImg = new Image();
+blastImg.src = 'images/destroy_all.png';
+
+// Game variables
+let basket = { x: canvas.width / 2 - 50, y: canvas.height - 100, width: 100, height: 50 };
+let fruits = [];
+let score = 0;
+let lives = 3;
+let level = 1;
+let fallSpeed = 2;
+let gameOver = false;
+let heartSpawnedThisLevel = false; // ❤️ Track if heart spawned this level
+
+// Power-up states
+let slowModeActive = false;
+let slowModeEndTime = 0;
+
+// DOM elements
+const restartBtn = document.getElementById('restartBtn');
+const catchSound = document.getElementById('catchSound');
+const gameOverSound = document.getElementById('gameOverSound');
+const backgroundMusic = document.getElementById('backgroundMusic');
+const slowSound = document.getElementById('slowSound');
+const bonusSound = document.getElementById('bonusSound');
+const blastSound = document.getElementById('blastSound');
+const heartSound = document.getElementById('heartSound');
+
+// Spawn fruits & power-ups
+function spawnFruit() {
+  let randomPowerUp = Math.random();
+  let fruit;
+
+  // Guarantee one heart per level
+  if (!heartSpawnedThisLevel && Math.random() < 0.1) { // 10% chance to spawn early
+    fruit = { img: heartImg, type: 'heart' }; // ❤️
+    heartSpawnedThisLevel = true; // Mark heart as spawned
+  }
+  else if (randomPowerUp < 0.1) { // 10% chance for other power-ups
+    if (randomPowerUp < 0.05) {
+      fruit = { img: slowImg, type: 'slow' };
+    } else {
+      fruit = { img: blastImg, type: 'blast' };
+    }
+  }
+  else {
+    fruit = { img: fruitImgs[Math.floor(Math.random() * fruitImgs.length)], type: 'fruit' };
+  }
+
+  fruit.x = Math.random() * (canvas.width - 50);
+  fruit.y = -50;
+  fruit.speed = (Math.random() * 1.5 + fallSpeed) * (slowModeActive ? 0.5 : 1);
+
+  fruits.push(fruit);
+}
+
+// Draw basket
+function drawBasket() {
+  ctx.drawImage(basketImg, basket.x, basket.y, basket.width, basket.height);
+}
+
+// Draw fruits
+function drawFruits() {
+  fruits.forEach(fruit => {
+    ctx.drawImage(fruit.img, fruit.x, fruit.y, 50, 50);
+  });
+}
+
+// Update fruits
+function updateFruits() {
+  fruits.forEach((fruit, index) => {
+    fruit.y += fruit.speed * level; // Scale speed with level
+
+    // Check for catch
+    if (
+      fruit.x < basket.x + basket.width &&
+      fruit.x + 50 > basket.x &&
+      fruit.y < basket.y + basket.height &&
+      fruit.y + 50 > basket.y
+    ) {
+      if (fruit.type === 'fruit') {
+        score++;
+        catchSound.play();
+
+        if (score % 10 === 0) {
+          level++;
+          heartSpawnedThisLevel = false; // Reset heart spawn for new level
+          fallSpeed += 0.5;
+          console.log(`Level up! Now level ${level}`);
+        }
+      } else if (fruit.type === 'slow') {
+        slowModeActive = true;
+        slowModeEndTime = Date.now() + 5000; // 5 seconds
+        slowSound.play();
+      } else if (fruit.type === 'heart') {
+        if (lives < 5) lives++;
+        heartSound.play();
+      } else if (fruit.type === 'blast') {
+        score += fruits.length; // destroy all fruits
+        fruits = [];
+        blastSound.play();
+      }
+
+      fruits.splice(index, 1);
+    }
+
+    // Missed fruit
+    if (fruit.y > canvas.height) {
+      if (fruit.type === 'fruit') {
+        lives--;
+        if (lives <= 0) endGame();
+      }
+      fruits.splice(index, 1);
+    }
+  });
+
+  if (slowModeActive && Date.now() > slowModeEndTime) {
+    slowModeActive = false;
+  }
+}
+
+// End game
+function endGame() {
+  gameOver = true;
+  backgroundMusic.pause();
+  gameOverSound.play();
+  restartBtn.style.display = 'block';
+}
+
+// Draw score, lives, level
+function drawHUD() {
+  ctx.fillStyle = 'white';
+  ctx.font = '24px Arial';
+  ctx.fillText(`Score: ${score}`, 20, 40);
+  ctx.fillText(`Lives: ${lives}`, canvas.width - 120, 40);
+  ctx.fillText(`Level: ${level}`, canvas.width / 2 - 40, 40);
+
+  if (slowModeActive) {
+    ctx.fillStyle = 'cyan';
+    ctx.fillText(`SLOW MODE!`, canvas.width / 2 - 70, 80);
+  }
+}
+
+// Game loop
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawBasket();
+  drawFruits();
+  drawHUD();
+  updateFruits();
+
+  if (!gameOver) requestAnimationFrame(gameLoop);
+}
+
+// Move basket
+canvas.addEventListener('mousemove', (e) => {
+  basket.x = e.clientX - basket.width / 2;
+});
+canvas.addEventListener('touchmove', (e) => {
+  basket.x = e.touches[0].clientX - basket.width / 2;
+});
+
+// Restart button
+restartBtn.addEventListener('click', () => {
+  score = 0;
+  lives = 3;
+  level = 1;
+  fallSpeed = 2;
+  fruits = [];
+  slowModeActive = false;
+  heartSpawnedThisLevel = false;
+  gameOver = false;
+  restartBtn.style.display = 'none';
+  backgroundMusic.play();
+  gameLoop();
+});
+
+// Start game
+setInterval(() => {
+  if (!gameOver) spawnFruit();
+}, 1000);
+
+backgroundMusic.play();
+gameLoop();
+</script>
+</body>
+</html>
